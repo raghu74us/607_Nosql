@@ -1,0 +1,189 @@
+---
+title: "DATA 607:NoSQL"
+author: "Raghu"
+date: "April 25, 2017"
+output: html_document
+---
+
+# Assingment
+  
+    This assignment is to take a relational data base and convert it to a No SQL database using either MongoDB or Neo4j. I have chosen Neo4j. 
+
+```{r setup, include=TRUE}
+
+if(!require ("RMySQL")) install.packages('RMySQL')
+if(!require ("RNeo4j")) install.packages('RNeo4j')
+
+```
+
+## Mysql connection and Retrieve flights db tables
+
+```{r s1, include=TRUE}
+
+mydb <- dbConnect(MySQL(), user='root',password='test123', dbname='flights',host='localhost')
+
+st1 <- "SELECT * from flights.airlines"
+airlines <- dbGetQuery(mydb,st1 )
+
+st2 <- "SELECT * from flights.airports"
+airports <- dbGetQuery(mydb,st2 )
+
+st3 <- "select * from flights.flights where year=2013 and month=1 and day =1"
+flights <- dbGetQuery(mydb,st3 )
+
+st4 <- "SELECT * FROM planes"
+planes <- dbGetQuery(mydb,st4 )
+
+st5 <- "SELECT * FROM weather"
+weather <- dbGetQuery(mydb,st5 )
+
+dbDisconnect(mydb)
+
+```
+
+```{r s2, include=TRUE}
+
+flights <- flights[flights$dep_time > 400 & flights$dep_time < 700, ]
+airports <- airports[airports$faa %in% flights$dest,]
+airlines <- airlines[airlines$carrier %in% flights$carrier,]
+  
+```
+
+## Connect to Neo4J
+
+```{r s3, include=TRUE}
+
+graph = startGraph("http://localhost:7474/db/data/",username="neo4j",password="neo5j")
+clear(graph, input = FALSE)
+
+#Clear Existing nodes and relationship from database
+#MATCH (p)-[r]-() delete p,r;
+
+```
+
+#Node: Airlines
+```{r s4, include=TRUE}
+addConstraint(graph, "Airline" , "carrier")
+
+q1 <- "CREATE (a:Airline {carrier: {carrier}, name: {name}})"
+
+t = newTransaction(graph)
+
+for (i in 1:nrow(airlines)) {
+   carrier = airlines$carrier[i]
+   name = airlines$name[i]
+   
+   appendCypher( t, q1, carrier = carrier, name=name)
+}
+
+commit(t)
+```
+
+#Node: Airport
+```{r s6, include=TRUE}
+
+q2 <- "CREATE (b:Airport {faa: {faa}, name: {name}})"
+
+t = newTransaction(graph)
+
+for (i in 1:nrow(airports)) {
+   faa = airports$faa[i]
+   name = airports$name[i]
+   
+   appendCypher( t, q2, faa = faa, name=name)
+}
+
+commit(t)
+```
+
+#Node: Flights
+```{r s7, include=TRUE}
+
+q3 <- "CREATE (c:Flights {name: {name}, carrier: {carrier},origin: {origin}, dest:{dest} })"
+
+t = newTransaction(graph)
+
+for (i in 1:nrow(flights)) {
+   
+   name = flights$flight[i]
+   carrier = flights$carrier[i]
+   origin = flights$origin[i]
+   dest = flights$dest[i]
+   
+   appendCypher( t, q3, name=name,carrier = carrier,origin=origin, dest=dest)
+}
+
+commit(t)
+```
+
+
+#Define Relationship between Flights and Airline
+
+```{r s8, include=TRUE}
+query1 <- '
+MATCH (a:Flights),(b:Airline)
+WHERE a.carrier={carrier} AND  b.carrier={carrier}
+CREATE (a) -[r:Serves] -> (b)
+'
+
+t = newTransaction(graph)
+
+for (i in 1:nrow(flights)) {
+  carrier = flights$carrier[i]
+  fnum = flights$flight[i]
+
+  appendCypher(t, 
+               query1, 
+               fnum = fnum,
+               carrier = carrier)
+}
+commit(t)
+
+```
+
+
+
+#Define Relationship between Flight and Airport
+
+```{r s9, include=TRUE}
+
+query2 <- '
+MATCH (a:Flights) ,(c:Airport)
+WHERE a.origin={origin} AND c.faa={origin}
+CREATE (c) -[o:Origin] -> (d)
+'
+
+t = newTransaction(graph)
+
+for (i in 1:nrow(flights)) {
+  origin = flights$origin[i]
+  fnum = flights$flight[i]
+  dep_time = flights$dep_time[i]
+  
+  appendCypher(t, 
+               query2, 
+               origin = origin,
+               fnum = fnum, 
+               dep_time = dep_time)
+}
+commit(t)
+
+```
+
+## Graph
+
+```{r s10, include=TRUE}
+
+library(png)
+img <- readPNG('c:/cuny/graph_q2.PNG')
+grid::grid.raster(img)
+
+```
+
+
+## Conclusion
+
+RDBMS is used in ERP environment by various industries and integrated with other tools designed for analytics. SQL Statements are complex and large to link multiple tables. RDBMS follow ACID(Atomicity, Consistency, isolation, Durablity) principles. RBBMS is around for long, mature and proven. 
+
+NoSQL is easy to install, create graphs, load files in many formats and create queries that are shorter to link many tables. This also use ACID principles. 
+
